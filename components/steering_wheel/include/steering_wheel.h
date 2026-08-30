@@ -1,1 +1,3 @@
-void func(void);
+void initSteeringWheel();
+void getAngleDegrees();
+void calibrateCenter();
