@@ -9,7 +9,7 @@
 
 static const char *TAG = "STEERING_WHEEL";
 
-static hal_adc_t *s_adc_handle = NULL;
+static hal_adc_t *s_adc_handle;
 
 static steering_wheel_config_t s_config = {
     .adc_min_raw = 0,

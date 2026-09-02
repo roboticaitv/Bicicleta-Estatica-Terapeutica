@@ -47,24 +47,6 @@ float steering_wheel_get_angle_degrees(void);
  */
 esp_err_t steering_wheel_calibrate_center(void);
 
-/* ========================================================================= */
-/* Legacy API aliases for backward compatibility                             */
-/* ========================================================================= */
-
-/**
- * @brief Legacy initialization function.
- */
-void initSteeringWheel(void);
-
-/**
- * @brief Legacy get angle function.
- */
-void getAngleDegrees(void);
-
-/**
- * @brief Legacy calibrate center function.
- */
-void calibrateCenter(void);
 
 #ifdef __cplusplus
 }
