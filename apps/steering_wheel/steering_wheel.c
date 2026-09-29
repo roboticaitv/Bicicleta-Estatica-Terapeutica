@@ -4,7 +4,7 @@
  */
 
 #include "steering_wheel.h"
-#include "hw_adc.h"
+#include "adc.h"
 #include "esp_log.h"
 
 static const char *TAG = "STEERING_WHEEL";
