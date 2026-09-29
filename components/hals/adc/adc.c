@@ -3,7 +3,7 @@
  * @brief Implementation of the Hardware Abstraction Layer (HAL) for ADC.
  */
 
-#include "hw_adc.h"
+#include "adc.h"
 #include "esp_log.h"
 #include "hal/adc_types.h"
 
