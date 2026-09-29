@@ -63,7 +63,7 @@ venv/
 env/
 
 # Language Servers
-.cache/*
+.cache/
 .clangd/
 .ccls-cache/
 compile_commands.json
@@ -74,6 +74,7 @@ ehthumbs.db
 Desktop.ini
 
 # User-specific configuration files
+*.vscode/
 *.vscode
 *.user
 *.workspace # General workspace files, can be from various tools
