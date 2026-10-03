@@ -12,10 +12,6 @@
 #include "esp_err.h"
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /**
  * @brief Steering wheel configuration structure.
  */
@@ -46,10 +42,5 @@ float steering_wheel_get_angle_degrees(void);
  * @return ESP_OK on success, or ESP_FAIL if the sensor is uninitialized.
  */
 esp_err_t steering_wheel_calibrate_center(void);
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* STEERING_WHEEL_H */

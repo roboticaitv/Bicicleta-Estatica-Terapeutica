@@ -16,11 +16,6 @@
 #include "hal/adc_types.h"
 #include <stdbool.h>
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /**
  * @brief Configuration structure for the HAL ADC unit and channel.
  */
@@ -77,9 +72,5 @@ hal_adc_t *hw_adc_init(adc_unit_t unit_id, adc_channel_t channel_id);
  * @return ESP_OK on success, or error code.
  */
 esp_err_t hw_adc_read_voltage(hal_adc_t *handle, int *voltage_mv);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

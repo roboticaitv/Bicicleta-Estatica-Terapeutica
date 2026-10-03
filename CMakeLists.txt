@@ -2,6 +2,7 @@
 
 set(EXTRA_COMPONENT_DIRS
     "${CMAKE_SOURCE_DIR}/components/hals"
+    "${CMAKE_SOURCE_DIR}/components/middleware"
     "${CMAKE_SOURCE_DIR}/components/drivers"
     "${CMAKE_SOURCE_DIR}/apps"
 )
