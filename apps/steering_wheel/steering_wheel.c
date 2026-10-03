@@ -15,7 +15,7 @@ static steering_wheel_config_t s_config = {
     .adc_min_raw = 0,
     .adc_max_raw = 4095,
     .adc_center_raw = 2048,
-    .max_angle_deg = 45.0f
+    .max_angle_deg = 90.0f
 };
 
 esp_err_t steering_wheel_init(void) {

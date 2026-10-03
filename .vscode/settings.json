@@ -31,7 +31,7 @@
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/home/carlos/Documentos/proyectos/biciver/build"
+    "--compile-commands-dir=/home/carlos/Documents/proyectos/bicicleta/build"
   ],
   "idf.flashType": "UART"
 }
