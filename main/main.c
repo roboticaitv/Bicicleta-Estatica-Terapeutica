@@ -3,10 +3,12 @@
  * @brief Application entry point for Bicicleta Estática Terapéutica.
  */
 
+#include "esp_err.h"
 #include "steering_wheel.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "ble_manager.h"
 
 static const char *TAG = "APP_MAIN";
 
@@ -18,10 +20,15 @@ void app_main(void) {
         ESP_LOGE(TAG, "Failed to initialize steering wheel!");
     }
 
+    // Initilize bluetooth service
+    if (ble_manager_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize Nimble component");
+    }
     // Main application loop
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(100));
         float angle = steering_wheel_get_angle_degrees();
         ESP_LOGD(TAG, "Current angle: %.2f deg", angle);
     }
+
 }
