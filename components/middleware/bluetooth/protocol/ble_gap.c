@@ -36,8 +36,8 @@ static void start_advertising(void) {
     return;
   }
 
-  rsp_fields.name = (uint8_t *)DEVICE_NAME;
-  rsp_fields.name_len = strlen(DEVICE_NAME);
+  rsp_fields.name = (uint8_t *)BLE_DEVICE_NAME;
+  rsp_fields.name_len = strlen(BLE_DEVICE_NAME);
   rsp_fields.name_is_complete = 1;
   rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
   if (rc != 0) {
@@ -53,7 +53,7 @@ static void start_advertising(void) {
     ESP_LOGE(TAG, "Failed to start advertising: %d", rc);
     return;
   }
-  ESP_LOGI(TAG, "Advertising HID gamepad as %s", DEVICE_NAME);
+  ESP_LOGI(TAG, "Advertising HID gamepad as %s", BLE_DEVICE_NAME);
 }
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg) {

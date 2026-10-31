@@ -7,6 +7,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "generic-data.h"
+#include "ble_config.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "os/os_mbuf.h"
@@ -201,7 +202,7 @@ static int hid_characteristic_access(uint16_t conn_handle,
   return BLE_ATT_ERR_UNLIKELY;
 }
 
-static const struct ble_gatt_dsc_def report_descriptors[] = {
+static struct ble_gatt_dsc_def report_descriptors[] = {
     {.uuid = &report_reference_uuid.u,
      .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC,
      .access_cb = report_reference_access},
@@ -269,7 +270,7 @@ static const struct ble_gatt_svc_def hid_services[] = {
 int gatt_svc_init(void) {
   ble_svc_gatt_init();
   ble_svc_gap_init();
-  int rc = ble_svc_gap_device_name_set(DEVICE_NAME);
+  int rc = ble_svc_gap_device_name_set(BLE_DEVICE_NAME);
   if (rc != 0) {
     ESP_LOGE(TAG, "Failed to set GAP device name: %d", rc);
     return rc;
