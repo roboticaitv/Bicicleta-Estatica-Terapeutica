@@ -1,3 +1,3 @@
 ﻿idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES steering_wheel bluetooth)
+                       REQUIRES steering_wheel bluetooth ledc)
