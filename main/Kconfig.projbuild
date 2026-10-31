@@ -58,4 +58,29 @@ config BICIVER_STEERING_MAX_ANGLE_DEG
     range 1 180
     default 90
 
+config BICIVER_BATTERY_LEVEL
+    int "Battery Service level reported to the host"
+    range 0 100
+    default 100
+    help
+        HOGP requires a Battery Service. Set this to the actual battery level
+        if the device is battery-powered.
+
+config BICIVER_PNP_VENDOR_ID
+    hex "PnP ID vendor ID"
+    default 0x303A
+    help
+        Defaults to Espressif's USB vendor ID. Change this if the product is
+        registered under a different vendor.
+
+config BICIVER_PNP_PRODUCT_ID
+    hex "PnP ID product ID"
+    default 0x0000
+    help
+        Set the assigned product ID when one is available.
+
+config BICIVER_PNP_PRODUCT_VERSION
+    hex "PnP ID product version"
+    default 0x0100
+
 endmenu

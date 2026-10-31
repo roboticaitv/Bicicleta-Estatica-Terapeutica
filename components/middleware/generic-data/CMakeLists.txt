@@ -1,2 +1,3 @@
 idf_component_register(SRCS "generic-data.c"
-                    INCLUDE_DIRS "include")
+                    INCLUDE_DIRS "include"
+                    REQUIRES freertos log)
