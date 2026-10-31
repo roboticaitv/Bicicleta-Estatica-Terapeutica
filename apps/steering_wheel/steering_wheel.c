@@ -1,88 +1,161 @@
-﻿/**
- * @file steering_wheel.c
- * @brief Implementation of the steering wheel feature logic.
- */
-
 #include "steering_wheel.h"
+
+#include <math.h>
+#include <string.h>
+
 #include "adc.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "STEERING_WHEEL";
-
 static hal_adc_t *s_adc_handle;
+static int s_filter_values[CONFIG_BICIVER_STEERING_FILTER_WINDOW];
+static size_t s_filter_count;
+static size_t s_filter_next;
+static int s_center_raw = CONFIG_BICIVER_ADC_CENTER_RAW;
 
-static steering_wheel_config_t s_config = {
-    .adc_min_raw = 0,
-    .adc_max_raw = 4095,
-    .adc_center_raw = 2048,
-    .max_angle_deg = 90.0f
-};
-
-esp_err_t steering_wheel_init(void) {
-    // GPIO 4 corresponds to ADC_UNIT_1, ADC_CHANNEL_3 on ESP32
-    s_adc_handle = hw_adc_init(ADC_UNIT_1, ADC_CHANNEL_3);
-    if (!s_adc_handle) {
-        ESP_LOGE(TAG, "Failed to initialize ADC for steering wheel");
-        return ESP_FAIL;
+static bool gpio_configuration_valid(void) {
+  const int pins[] = {CONFIG_BICIVER_ADC_GPIO,
+                      CONFIG_BICIVER_ENCODER_A_GPIO,
+                      CONFIG_BICIVER_ENCODER_B_GPIO,
+                      CONFIG_BICIVER_LIMIT_LOW_LED_GPIO,
+                      CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO};
+  for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
+    if (!GPIO_IS_VALID_GPIO(pins[i])) {
+      ESP_LOGE(TAG, "GPIO %d is not valid for this target", pins[i]);
+      return false;
     }
-    ESP_LOGI(TAG, "Steering wheel module initialized successfully on ADC1_CH3");
-    return ESP_OK;
+    for (size_t j = i + 1; j < sizeof(pins) / sizeof(pins[0]); ++j) {
+      if (pins[i] == pins[j]) {
+        ESP_LOGE(TAG, "GPIO %d is assigned to multiple functions", pins[i]);
+        return false;
+      }
+    }
+  }
+  if (CONFIG_BICIVER_ADC_MIN_RAW >= s_center_raw ||
+      s_center_raw >= CONFIG_BICIVER_ADC_MAX_RAW) {
+    ESP_LOGE(TAG, "ADC limits must satisfy min < center < max");
+    return false;
+  }
+  return true;
 }
 
-float steering_wheel_get_angle_degrees(void) {
-    if (!s_adc_handle) {
-        ESP_LOGW(TAG, "Steering wheel not initialized. Calling steering_wheel_init().");
-        if (steering_wheel_init() != ESP_OK) {
-            return 0.0f;
-        }
-    }
+esp_err_t steering_wheel_init(void) {
+  if (!gpio_configuration_valid()) {
+    return ESP_ERR_INVALID_ARG;
+  }
 
-    int raw_val = 0;
-    readRaw12Bit(s_adc_handle, &raw_val);
+  adc_unit_t adc_unit;
+  adc_channel_t adc_channel;
+  esp_err_t err = adc_oneshot_io_to_channel(CONFIG_BICIVER_ADC_GPIO,
+                                            &adc_unit, &adc_channel);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "GPIO %d cannot be used as an ADC input: %s",
+             CONFIG_BICIVER_ADC_GPIO, esp_err_to_name(err));
+    return err;
+  }
+  s_adc_handle = hw_adc_init(adc_unit, adc_channel);
+  if (s_adc_handle == NULL) {
+    return ESP_FAIL;
+  }
 
-    // Compute angle relative to center:
-    // Left: raw < center, Right: raw > center
-    float angle = 0.0f;
-    if (raw_val >= s_config.adc_center_raw) {
-        int span = s_config.adc_max_raw - s_config.adc_center_raw;
-        if (span > 0) {
-            angle = ((float)(raw_val - s_config.adc_center_raw) / (float)span) * s_config.max_angle_deg;
-        }
-    } else {
-        int span = s_config.adc_center_raw - s_config.adc_min_raw;
-        if (span > 0) {
-            angle = -((float)(s_config.adc_center_raw - raw_val) / (float)span) * s_config.max_angle_deg;
-        }
-    }
+  gpio_config_t led_config = {
+      .pin_bit_mask = (1ULL << CONFIG_BICIVER_LIMIT_LOW_LED_GPIO) |
+                      (1ULL << CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO),
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  err = gpio_config(&led_config);
+  if (err != ESP_OK) {
+    return err;
+  }
+#if CONFIG_BICIVER_LIMIT_LEDS_ACTIVE_LOW
+  gpio_set_level(CONFIG_BICIVER_LIMIT_LOW_LED_GPIO, 1);
+  gpio_set_level(CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO, 1);
+#else
+  gpio_set_level(CONFIG_BICIVER_LIMIT_LOW_LED_GPIO, 0);
+  gpio_set_level(CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO, 0);
+#endif
+  memset(s_filter_values, 0, sizeof(s_filter_values));
+  s_filter_count = 0;
+  s_filter_next = 0;
+  ESP_LOGI(TAG, "ADC GPIO %d; limits %d/%d/%d; moving average window %d",
+           CONFIG_BICIVER_ADC_GPIO, CONFIG_BICIVER_ADC_MIN_RAW, s_center_raw,
+           CONFIG_BICIVER_ADC_MAX_RAW, CONFIG_BICIVER_STEERING_FILTER_WINDOW);
+  return ESP_OK;
+}
 
-    ESP_LOGI(TAG, "Steering Angle: %.2f deg (Raw: %d)", angle, raw_val);
-    return angle;
+static int filter_adc_sample(int raw) {
+  s_filter_values[s_filter_next] = raw;
+  s_filter_next = (s_filter_next + 1) % CONFIG_BICIVER_STEERING_FILTER_WINDOW;
+  if (s_filter_count < CONFIG_BICIVER_STEERING_FILTER_WINDOW) {
+    ++s_filter_count;
+  }
+  int64_t total = 0;
+  for (size_t i = 0; i < s_filter_count; ++i) {
+    total += s_filter_values[i];
+  }
+  return (int)(total / (int64_t)s_filter_count);
+}
+
+esp_err_t steering_wheel_sample(steering_wheel_sample_t *sample) {
+  if (sample == NULL || s_adc_handle == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  int raw = 0;
+  readRaw12Bit(s_adc_handle, &raw);
+  const int filtered = filter_adc_sample(raw);
+  const bool below = filtered < CONFIG_BICIVER_ADC_MIN_RAW;
+  const bool above = filtered > CONFIG_BICIVER_ADC_MAX_RAW;
+  const int clamped = filtered < CONFIG_BICIVER_ADC_MIN_RAW
+                          ? CONFIG_BICIVER_ADC_MIN_RAW
+                          : (filtered > CONFIG_BICIVER_ADC_MAX_RAW
+                                 ? CONFIG_BICIVER_ADC_MAX_RAW
+                                 : filtered);
+
+  float angle;
+  if (clamped <= s_center_raw) {
+    angle = -(float)(s_center_raw - clamped) *
+            CONFIG_BICIVER_STEERING_MAX_ANGLE_DEG /
+            (float)(s_center_raw - CONFIG_BICIVER_ADC_MIN_RAW);
+  } else {
+    angle = (float)(clamped - s_center_raw) *
+            CONFIG_BICIVER_STEERING_MAX_ANGLE_DEG /
+            (float)(CONFIG_BICIVER_ADC_MAX_RAW - s_center_raw);
+  }
+
+#if CONFIG_BICIVER_LIMIT_LEDS_ACTIVE_LOW
+  gpio_set_level(CONFIG_BICIVER_LIMIT_LOW_LED_GPIO, below ? 0 : 1);
+  gpio_set_level(CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO, above ? 0 : 1);
+#else
+  gpio_set_level(CONFIG_BICIVER_LIMIT_LOW_LED_GPIO, below ? 1 : 0);
+  gpio_set_level(CONFIG_BICIVER_LIMIT_HIGH_LED_GPIO, above ? 1 : 0);
+#endif
+  *sample = (steering_wheel_sample_t){
+      .adc_raw = filtered,
+      .angle_degrees = angle,
+      .below_lower_limit = below,
+      .above_upper_limit = above,
+  };
+  return ESP_OK;
 }
 
 esp_err_t steering_wheel_calibrate_center(void) {
-    if (!s_adc_handle) {
-        return ESP_FAIL;
-    }
-
-    int raw_val = 0;
-    readRaw12Bit(s_adc_handle, &raw_val);
-    s_config.adc_center_raw = raw_val;
-    ESP_LOGI(TAG, "Steering center calibrated to raw value: %d", raw_val);
-    return ESP_OK;
-}
-
-/* ========================================================================= */
-/* Legacy Wrappers                                                           */
-/* ========================================================================= */
-
-void initSteeringWheel(void) {
-    steering_wheel_init();
-}
-
-void getAngleDegrees(void) {
-    (void)steering_wheel_get_angle_degrees();
-}
-
-void calibrateCenter(void) {
-    steering_wheel_calibrate_center();
+  if (s_adc_handle == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  int raw = 0;
+  readRaw12Bit(s_adc_handle, &raw);
+  if (raw <= CONFIG_BICIVER_ADC_MIN_RAW ||
+      raw >= CONFIG_BICIVER_ADC_MAX_RAW) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  s_center_raw = raw;
+  ESP_LOGI(TAG, "Steering center calibrated to %d", s_center_raw);
+  return ESP_OK;
 }

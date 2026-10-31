@@ -1,0 +1,61 @@
+menu "Biciver sensor configuration"
+
+config BICIVER_ADC_GPIO
+    int "Steering potentiometer ADC GPIO"
+    range 0 48
+    default 4
+    help
+        ESP32-S3 GPIO connected to the steering potentiometer wiper.
+
+config BICIVER_ENCODER_A_GPIO
+    int "Pedal encoder phase A GPIO (reserved)"
+    range 0 48
+    default 5
+
+config BICIVER_ENCODER_B_GPIO
+    int "Pedal encoder phase B GPIO (reserved)"
+    range 0 48
+    default 6
+
+config BICIVER_LIMIT_LOW_LED_GPIO
+    int "Steering lower-limit LED GPIO"
+    range 0 48
+    default 7
+
+config BICIVER_LIMIT_HIGH_LED_GPIO
+    int "Steering upper-limit LED GPIO"
+    range 0 48
+    default 8
+
+config BICIVER_LIMIT_LEDS_ACTIVE_LOW
+    bool "Limit LEDs are active-low"
+    default n
+    help
+        Enable when the LED driver circuit turns on with a low GPIO level.
+
+config BICIVER_ADC_MIN_RAW
+    int "Steering ADC lower limit"
+    range 0 4094
+    default 1024
+
+config BICIVER_ADC_CENTER_RAW
+    int "Steering ADC center"
+    range 1 4094
+    default 2048
+
+config BICIVER_ADC_MAX_RAW
+    int "Steering ADC upper limit"
+    range 1 4095
+    default 3072
+
+config BICIVER_STEERING_FILTER_WINDOW
+    int "Steering ADC moving-average window"
+    range 1 32
+    default 8
+
+config BICIVER_STEERING_MAX_ANGLE_DEG
+    int "Steering maximum angle on each side"
+    range 1 180
+    default 90
+
+endmenu
