@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include "ble_config.h"
 
 /* FreeRTOS APIs */
 #include <freertos/FreeRTOS.h>
@@ -28,6 +29,4 @@
 
 /* Defines */
 #define TAG "BLE_MANAGER"
-#define DEVICE_NAME "BICIVER_TERAPEUTICA"
-
 #endif // COMMON_H
