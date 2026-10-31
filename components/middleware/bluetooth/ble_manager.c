@@ -3,6 +3,7 @@
 #include "ble_gatt.h"
 #include "common.h"
 #include "esp_log.h"
+#include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 
@@ -19,7 +20,7 @@ static void host_task(void *param) {
 static void on_sync(void) {
   ESP_LOGI(TAG, "controller && host synced");
   ble_gap_init_advertising();
-  ble_gatt_init();
+  ble_gattc_init();
 }
 
 static void on_reset(int reason) {

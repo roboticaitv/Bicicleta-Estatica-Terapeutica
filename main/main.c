@@ -4,6 +4,8 @@
  */
 
 #include "esp_err.h"
+#include "hal/ledc_types.h"
+#include "ledc.h"
 #include "steering_wheel.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,6 +16,9 @@ static const char *TAG = "APP_MAIN";
 
 void app_main(void) {
     ESP_LOGI(TAG, "Biciver Init...");
+
+    // Checar cual gpin es ideal
+    ledc_init(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, LEDC_CHANNEL_1, 10);
 
     // Initialize steering wheel sensor module
     if (steering_wheel_init() != ESP_OK) {
