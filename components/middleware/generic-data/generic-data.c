@@ -1,60 +1,127 @@
 #include "generic-data.h"
+
+#include <math.h>
+#include <string.h>
+
 #include "esp_log.h"
-#include <stdint.h>
 
-/**
- * @file generic-data.c
- * @brief Implementation of the generic sensor data middleware.
- *
- * Provides the internal storage and implementation for initializing,
- * updating, and retrieving the aggregated sensor data.
- */
 static const char *TAG = "GENERIC_DATA";
+static generic_data_snapshot_t s_data;
 
-static generic_data_t generic_data;
-
-/**
- * @brief Initializes the internal aggregated sensor data.
- *
- * Sets the angle and speed values to their default values and logs
- * the initialization event.
- */
-void new_static_generic() {
-  generic_data.degangle = 0.0f;
-  generic_data.speedy = 0.0f;
-  ESP_LOGI(
-      TAG,
-      "Generic data application succesfully started with 0.0 && 0.0 values");
+static int find_signal(uint16_t id) {
+  for (uint8_t i = 0; i < s_data.count; ++i) {
+    if (s_data.signals[i].id == id) {
+      return i;
+    }
+  }
+  return -1;
 }
 
-/**
- * @brief Updates the stored speed value.
- *
- * @param speed New speed value to be stored.
- */
+esp_err_t generic_data_init(void) {
+  memset(&s_data, 0, sizeof(s_data));
+  const generic_data_descriptor_t descriptors[] = {
+      {.id = GENERIC_SIGNAL_STEERING_ANGLE,
+       .name = "steering_angle",
+       .unit = "deg",
+       .type = GENERIC_DATA_TYPE_FLOAT},
+      {.id = GENERIC_SIGNAL_PEDAL_RPM,
+       .name = "pedal_rpm",
+       .unit = "rpm",
+       .type = GENERIC_DATA_TYPE_INT32},
+  };
+  const generic_data_value_t initial_values[] = {{.f32 = 0.0f}, {.i32 = 0}};
 
-void set_speedy_data(int16_t speed) {
-  ESP_LOGW(TAG, "Not implemented");
-  generic_data.speedy = speed;
+  for (size_t i = 0; i < sizeof(descriptors) / sizeof(descriptors[0]); ++i) {
+    esp_err_t err = generic_data_register(&descriptors[i], initial_values[i]);
+    if (err != ESP_OK) {
+      return err;
+    }
+  }
+  ESP_LOGI(TAG, "Registered %u sensor signals", s_data.count);
+  return ESP_OK;
 }
 
-/**
- * @brief Updates the stored angle value.
- *
- * @param angle New angle value in degrees.
- */
-void set_degangle_data(float angle) {
-  ESP_LOGI(TAG, "Generic Angle: %.2f deg", angle);
-  generic_data.degangle = angle;
+esp_err_t generic_data_register(const generic_data_descriptor_t *descriptor,
+                                generic_data_value_t initial_value) {
+  if (descriptor == NULL || descriptor->id == 0 || descriptor->name == NULL ||
+      descriptor->unit == NULL || find_signal(descriptor->id) >= 0 ||
+      s_data.count >= GENERIC_DATA_MAX_SIGNALS ||
+      strlen(descriptor->name) >= GENERIC_DATA_NAME_MAX_LEN ||
+      strlen(descriptor->unit) >= GENERIC_DATA_UNIT_MAX_LEN) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (descriptor->type < GENERIC_DATA_TYPE_FLOAT ||
+      descriptor->type > GENERIC_DATA_TYPE_BOOL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (descriptor->type == GENERIC_DATA_TYPE_FLOAT &&
+      !isfinite(initial_value.f32)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  generic_data_signal_t *signal = &s_data.signals[s_data.count++];
+  signal->id = descriptor->id;
+  strlcpy(signal->name, descriptor->name, sizeof(signal->name));
+  strlcpy(signal->unit, descriptor->unit, sizeof(signal->unit));
+  signal->type = descriptor->type;
+  signal->value = initial_value;
+  signal->valid = true;
+  signal->revision = ++s_data.revision;
+  return ESP_OK;
 }
 
-/**
- * @brief Retrieves a copy of the internal aggregated sensor data.
- *
- * The returned structure is a copy of the middleware's internal data,
- * allowing the caller to access the current values without directly
- * accessing the internal storage.
- *
- * @return Copy of the current aggregated sensor data.
- */
-generic_data_t get_generic_data() { return generic_data; }
+static esp_err_t set_value(uint16_t id, generic_data_type_t type,
+                           generic_data_value_t value) {
+  int index = find_signal(id);
+  if (index < 0) {
+    return ESP_ERR_NOT_FOUND;
+  }
+  generic_data_signal_t *signal = &s_data.signals[index];
+  if (signal->type != type) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (type == GENERIC_DATA_TYPE_FLOAT && !isfinite(value.f32)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (memcmp(&signal->value, &value, sizeof(value)) != 0 || !signal->valid) {
+    signal->value = value;
+    signal->valid = true;
+    signal->revision = ++s_data.revision;
+  }
+  return ESP_OK;
+}
+
+esp_err_t generic_data_set_float(uint16_t id, float value) {
+  return set_value(id, GENERIC_DATA_TYPE_FLOAT,
+                   (generic_data_value_t){.f32 = value});
+}
+
+esp_err_t generic_data_set_int32(uint16_t id, int32_t value) {
+  return set_value(id, GENERIC_DATA_TYPE_INT32,
+                   (generic_data_value_t){.i32 = value});
+}
+
+esp_err_t generic_data_set_bool(uint16_t id, bool value) {
+  return set_value(id, GENERIC_DATA_TYPE_BOOL,
+                   (generic_data_value_t){.boolean = value});
+}
+
+esp_err_t generic_data_get(uint16_t id, generic_data_signal_t *signal) {
+  if (signal == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  int index = find_signal(id);
+  if (index < 0) {
+    return ESP_ERR_NOT_FOUND;
+  }
+  *signal = s_data.signals[index];
+  return ESP_OK;
+}
+
+esp_err_t generic_data_get_snapshot(generic_data_snapshot_t *snapshot) {
+  if (snapshot == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  *snapshot = s_data;
+  return ESP_OK;
+}
