@@ -19,7 +19,6 @@ static void start_advertising(void) {
 
   static const char short_name[] = "BICIVER-HID";
   adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-  adv_fields.flags_is_present = 1;
   adv_fields.name = (uint8_t *)short_name;
   adv_fields.name_len = sizeof(short_name) - 1;
   adv_fields.name_is_complete = 0;
