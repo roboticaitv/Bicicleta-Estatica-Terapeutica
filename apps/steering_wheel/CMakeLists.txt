@@ -1,4 +1,4 @@
 idf_component_register(SRCS "steering_wheel.c"
                        INCLUDE_DIRS "."
-                       REQUIRES adc)
+                       REQUIRES adc driver)
 

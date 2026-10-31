@@ -1,39 +1,30 @@
-﻿/**
- * @file main.c
- * @brief Application entry point for Bicicleta Estática Terapéutica.
- */
-
+#include "ble_manager.h"
 #include "esp_err.h"
-#include "hal/ledc_types.h"
-#include "ledc.h"
-#include "steering_wheel.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
-#include "ble_manager.h"
+#include "generic-data.h"
+#include "steering_wheel.h"
 
 static const char *TAG = "APP_MAIN";
 
 void app_main(void) {
-    ESP_LOGI(TAG, "Biciver Init...");
+  ESP_LOGI(TAG, "Biciver initialization");
 
-    // Checar cual gpin es ideal
-    ledc_init(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, LEDC_CHANNEL_1, 10);
+  ESP_ERROR_CHECK(generic_data_init());
+  ESP_ERROR_CHECK(steering_wheel_init());
+  ESP_ERROR_CHECK(ble_manager_init());
 
-    // Initialize steering wheel sensor module
-    if (steering_wheel_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize steering wheel!");
+  while (true) {
+    steering_wheel_sample_t sample;
+    if (steering_wheel_sample(&sample) == ESP_OK) {
+      esp_err_t err = generic_data_set_float(
+          GENERIC_SIGNAL_STEERING_ANGLE, sample.angle_degrees);
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to publish steering signal: %s",
+                 esp_err_to_name(err));
+      }
     }
-
-    // Initilize bluetooth service
-    if (ble_manager_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize Nimble component");
-    }
-    // Main application loop
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        float angle = steering_wheel_get_angle_degrees();
-        ESP_LOGD(TAG, "Current angle: %.2f deg", angle);
-    }
-
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
 }
