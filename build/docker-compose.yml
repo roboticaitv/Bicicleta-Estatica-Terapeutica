@@ -1,6 +1,6 @@
 services:
   idf:
-    image: espressif/idf:v5.3.2
+    image: espressif/idf:v6.0
     user: "1000:1000"
     working_dir: /project
     volumes:
