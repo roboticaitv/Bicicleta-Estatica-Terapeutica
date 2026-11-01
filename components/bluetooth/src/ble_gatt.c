@@ -1,18 +1,17 @@
 #include "ble_gatt.h"
 
-#include <math.h>
 #include <string.h>
 
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "generic-data.h"
-#include "ble_config.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "os/os_mbuf.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
 
-static const char *TAG = "BLE_HID";
+static const char *TAG = "BLE_GATT";
 
 static const ble_uuid16_t hid_service_uuid = BLE_UUID16_INIT(0x1812);
 static const ble_uuid16_t hid_info_uuid = BLE_UUID16_INIT(0x2A4A);
@@ -50,16 +49,8 @@ static const uint8_t hid_report_map[] = {
 
 static const uint8_t hid_information[] = {0x11, 0x01, 0x00, 0x02};
 static const uint8_t report_reference[] = {0x01, 0x01};
-static const uint8_t battery_level = CONFIG_BICIVER_BATTERY_LEVEL;
-static const uint8_t pnp_id[] = {
-    0x02,
-    CONFIG_BICIVER_PNP_VENDOR_ID & 0xFF,
-    (CONFIG_BICIVER_PNP_VENDOR_ID >> 8) & 0xFF,
-    CONFIG_BICIVER_PNP_PRODUCT_ID & 0xFF,
-    (CONFIG_BICIVER_PNP_PRODUCT_ID >> 8) & 0xFF,
-    CONFIG_BICIVER_PNP_PRODUCT_VERSION & 0xFF,
-    (CONFIG_BICIVER_PNP_PRODUCT_VERSION >> 8) & 0xFF,
-};
+static uint8_t s_battery_level = 100;
+static uint8_t s_pnp_id[7] = {0x02, 0x3A, 0x30, 0x00, 0x00, 0x00, 0x01};
 
 static uint16_t hid_info_value_handle;
 static uint16_t report_map_value_handle;
@@ -73,9 +64,10 @@ static bool s_report_subscribed;
 static bool s_suspended;
 static uint8_t s_protocol_mode = 1;
 static bool s_force_notify;
+
+static ble_hid_gamepad_report_t s_current_report = {0};
+static ble_hid_gamepad_report_t s_last_sent_report = {0};
 static bool s_have_last_report;
-static int16_t s_last_x;
-static int16_t s_last_y;
 static int64_t s_last_notify_us;
 static portMUX_TYPE s_state_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -86,47 +78,14 @@ static int append_bytes(struct ble_gatt_access_ctxt *ctxt, const void *data,
              : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
-static int read_report(uint8_t report[4], int16_t *x_out, int16_t *y_out) {
-  generic_data_snapshot_t snapshot;
-  if (generic_data_get_snapshot(&snapshot) != ESP_OK) {
-    return BLE_ATT_ERR_UNLIKELY;
+esp_err_t ble_hid_set_report(const ble_hid_gamepad_report_t *report) {
+  if (report == NULL) {
+    return ESP_ERR_INVALID_ARG;
   }
-
-  const generic_data_signal_t *angle_signal = NULL;
-  const generic_data_signal_t *rpm_signal = NULL;
-  for (uint8_t i = 0; i < snapshot.count; ++i) {
-    if (snapshot.signals[i].id == GENERIC_SIGNAL_STEERING_ANGLE) {
-      angle_signal = &snapshot.signals[i];
-    } else if (snapshot.signals[i].id == GENERIC_SIGNAL_PEDAL_RPM) {
-      rpm_signal = &snapshot.signals[i];
-    }
-  }
-  if (angle_signal == NULL || rpm_signal == NULL ||
-      angle_signal->type != GENERIC_DATA_TYPE_FLOAT ||
-      rpm_signal->type != GENERIC_DATA_TYPE_INT32 || !angle_signal->valid ||
-      !rpm_signal->valid) {
-    return BLE_ATT_ERR_UNLIKELY;
-  }
-
-  float angle = angle_signal->value.f32;
-  int32_t rpm = rpm_signal->value.i32;
-  if (!isfinite(angle)) {
-    return BLE_ATT_ERR_UNLIKELY;
-  }
-  if (angle < -90.0f) angle = -90.0f;
-  if (angle > 90.0f) angle = 90.0f;
-  if (rpm < -512) rpm = -512;
-  if (rpm > 512) rpm = 512;
-
-  int16_t x = (int16_t)lroundf(angle);
-  int16_t y = (int16_t)rpm;
-  report[0] = (uint8_t)(x & 0xFF);
-  report[1] = (uint8_t)(((uint16_t)x >> 8) & 0xFF);
-  report[2] = (uint8_t)(y & 0xFF);
-  report[3] = (uint8_t)(((uint16_t)y >> 8) & 0xFF);
-  if (x_out != NULL) *x_out = x;
-  if (y_out != NULL) *y_out = y;
-  return 0;
+  taskENTER_CRITICAL(&s_state_mux);
+  s_current_report = *report;
+  taskEXIT_CRITICAL(&s_state_mux);
+  return ESP_OK;
 }
 
 static int report_reference_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -155,18 +114,20 @@ static int hid_characteristic_access(uint16_t conn_handle,
       return append_bytes(ctxt, hid_report_map, sizeof(hid_report_map));
     }
     if (attr_handle == report_value_handle) {
-      uint8_t report[4];
-      int rc = read_report(report, NULL, NULL);
-      return rc == 0 ? append_bytes(ctxt, report, sizeof(report)) : rc;
+      ble_hid_gamepad_report_t report;
+      taskENTER_CRITICAL(&s_state_mux);
+      report = s_current_report;
+      taskEXIT_CRITICAL(&s_state_mux);
+      return append_bytes(ctxt, &report, sizeof(report));
     }
     if (attr_handle == protocol_mode_value_handle) {
       return append_bytes(ctxt, &s_protocol_mode, sizeof(s_protocol_mode));
     }
     if (attr_handle == battery_level_value_handle) {
-      return append_bytes(ctxt, &battery_level, sizeof(battery_level));
+      return append_bytes(ctxt, &s_battery_level, sizeof(s_battery_level));
     }
     if (attr_handle == pnp_id_value_handle) {
-      return append_bytes(ctxt, pnp_id, sizeof(pnp_id));
+      return append_bytes(ctxt, s_pnp_id, sizeof(s_pnp_id));
     }
     return BLE_ATT_ERR_READ_NOT_PERMITTED;
   }
@@ -267,15 +228,33 @@ static const struct ble_gatt_svc_def hid_services[] = {
     {0},
 };
 
-int gatt_svc_init(void) {
+int gatt_svc_init(const ble_config_t *config) {
+  const char *dev_name = "ESP32-GAMEPAD";
+  uint16_t appearance = 0x03C4;
+
+  if (config != NULL) {
+    s_battery_level = config->battery_level;
+    s_pnp_id[0] = 0x02;
+    s_pnp_id[1] = (uint8_t)(config->pnp_vendor_id & 0xFF);
+    s_pnp_id[2] = (uint8_t)((config->pnp_vendor_id >> 8) & 0xFF);
+    s_pnp_id[3] = (uint8_t)(config->pnp_product_id & 0xFF);
+    s_pnp_id[4] = (uint8_t)((config->pnp_product_id >> 8) & 0xFF);
+    s_pnp_id[5] = (uint8_t)(config->pnp_product_version & 0xFF);
+    s_pnp_id[6] = (uint8_t)((config->pnp_product_version >> 8) & 0xFF);
+    if (config->device_name != NULL) {
+      dev_name = config->device_name;
+    }
+    appearance = config->appearance;
+  }
+
   ble_svc_gatt_init();
   ble_svc_gap_init();
-  int rc = ble_svc_gap_device_name_set(BLE_DEVICE_NAME);
+  int rc = ble_svc_gap_device_name_set(dev_name);
   if (rc != 0) {
     ESP_LOGE(TAG, "Failed to set GAP device name: %d", rc);
     return rc;
   }
-  rc = ble_svc_gap_device_appearance_set(0x03C4); /* Gamepad */
+  rc = ble_svc_gap_device_appearance_set(appearance);
   if (rc != 0) {
     ESP_LOGE(TAG, "Failed to set GAP gamepad appearance: %d", rc);
     return rc;
@@ -320,8 +299,8 @@ esp_err_t ble_hid_notify_latest(void) {
   bool suspended = s_suspended;
   bool force_notify = s_force_notify;
   bool have_last_report = s_have_last_report;
-  int16_t last_x = s_last_x;
-  int16_t last_y = s_last_y;
+  ble_hid_gamepad_report_t current = s_current_report;
+  ble_hid_gamepad_report_t last = s_last_sent_report;
   int64_t last_notify_us = s_last_notify_us;
   taskEXIT_CRITICAL(&s_state_mux);
 
@@ -333,15 +312,8 @@ esp_err_t ble_hid_notify_latest(void) {
       !connection.sec_state.encrypted || !connection.sec_state.bonded) {
     return ESP_ERR_INVALID_STATE;
   }
-
-  uint8_t report[4];
-  int16_t x;
-  int16_t y;
-  int rc = read_report(report, &x, &y);
-  if (rc != 0) {
-    return ESP_FAIL;
-  }
-  if (!force_notify && have_last_report && x == last_x && y == last_y) {
+  if (!force_notify && have_last_report &&
+      current.x == last.x && current.y == last.y) {
     return ESP_OK;
   }
 
@@ -350,11 +322,11 @@ esp_err_t ble_hid_notify_latest(void) {
     return ESP_OK;
   }
 
-  struct os_mbuf *om = ble_hs_mbuf_from_flat(report, sizeof(report));
+  struct os_mbuf *om = ble_hs_mbuf_from_flat(&current, sizeof(current));
   if (om == NULL) {
     return ESP_ERR_NO_MEM;
   }
-  rc = ble_gatts_notify_custom(conn_handle, report_value_handle, om);
+  int rc = ble_gatts_notify_custom(conn_handle, report_value_handle, om);
   if (rc != 0) {
     os_mbuf_free_chain(om);
     return ESP_FAIL;
@@ -362,8 +334,7 @@ esp_err_t ble_hid_notify_latest(void) {
   taskENTER_CRITICAL(&s_state_mux);
   if (s_connection_handle == conn_handle) {
     s_last_notify_us = now_us;
-    s_last_x = x;
-    s_last_y = y;
+    s_last_sent_report = current;
     s_have_last_report = true;
     s_force_notify = false;
   }
