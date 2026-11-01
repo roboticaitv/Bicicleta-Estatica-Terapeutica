@@ -7,6 +7,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 
+void ble_store_config_init(void);
 
 static void host_task(void *param);
 static void on_sync(void);
@@ -41,6 +42,7 @@ void ble_host_config_init(void) {
       BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
   ble_hs_cfg.sm_their_key_dist =
       BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+  ble_store_config_init();
 }
 
 esp_err_t ble_manager_init(void) {
