@@ -1,6 +1,0 @@
-#ifndef BLE_CONFIG_H
-#define BLE_CONFIG_H
-
-#define BLE_DEVICE_NAME "BICIVER_TERAPEUTICA"
-
-#endif /* BLE_CONFIG_H */

@@ -4,8 +4,6 @@ set(SDKCONFIG "${CMAKE_SOURCE_DIR}/build/sdkconfig")
 set(SDKCONFIG_DEFAULTS "${CMAKE_SOURCE_DIR}/build/sdkconfig.defaults")
 
 set(EXTRA_COMPONENT_DIRS
-    "${CMAKE_SOURCE_DIR}/components/hals"
-    "${CMAKE_SOURCE_DIR}/components/middleware"
     "${CMAKE_SOURCE_DIR}/apps"
 )
 

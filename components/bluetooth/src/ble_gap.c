@@ -4,10 +4,13 @@
 #include "common.h"
 #include "host/ble_gap.h"
 
+static const char *TAG = "BLE_GAP";
+
 static uint8_t own_addr_type;
 static const ble_uuid16_t hid_service_uuid = BLE_UUID16_INIT(0x1812);
 static bool s_connected;
 static bool s_advertising;
+static ble_config_t s_gap_config;
 
 static void start_advertising(void);
 static int gap_event_handler(struct ble_gap_event *event, void *arg);
@@ -22,15 +25,15 @@ static void start_advertising(void) {
   struct ble_gap_adv_params adv_params = {0};
   int rc;
 
-  static const char short_name[] = "BICIVER-HID";
+  const char *short_name = s_gap_config.short_name ? s_gap_config.short_name : "ESP32-HID";
   adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
   adv_fields.name = (uint8_t *)short_name;
-  adv_fields.name_len = sizeof(short_name) - 1;
+  adv_fields.name_len = strlen(short_name);
   adv_fields.name_is_complete = 0;
   adv_fields.uuids16 = (ble_uuid16_t *)&hid_service_uuid;
   adv_fields.num_uuids16 = 1;
   adv_fields.uuids16_is_complete = 1;
-  adv_fields.appearance = 0x03C4; /* Gamepad */
+  adv_fields.appearance = s_gap_config.appearance;
   adv_fields.appearance_is_present = 1;
   adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
   adv_fields.tx_pwr_lvl_is_present = 1;
@@ -41,8 +44,9 @@ static void start_advertising(void) {
     return;
   }
 
-  rsp_fields.name = (uint8_t *)BLE_DEVICE_NAME;
-  rsp_fields.name_len = strlen(BLE_DEVICE_NAME);
+  const char *full_name = s_gap_config.device_name ? s_gap_config.device_name : "ESP32-GAMEPAD";
+  rsp_fields.name = (uint8_t *)full_name;
+  rsp_fields.name_len = strlen(full_name);
   rsp_fields.name_is_complete = 1;
   rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
   if (rc != 0) {
@@ -59,7 +63,7 @@ static void start_advertising(void) {
     return;
   }
   s_advertising = true;
-  ESP_LOGI(TAG, "Advertising HID gamepad as %s", BLE_DEVICE_NAME);
+  ESP_LOGI(TAG, "Advertising HID gamepad as %s", full_name);
 }
 
 static int gap_event_handler(struct ble_gap_event *event, void *arg) {
@@ -151,7 +155,10 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
   }
 }
 
-void ble_gap_init_advertising(void) {
+void ble_gap_init_advertising(const ble_config_t *config) {
+  if (config != NULL) {
+    s_gap_config = *config;
+  }
   int rc = ble_hs_util_ensure_addr(0);
   if (rc != 0) {
     ESP_LOGE(TAG, "No Bluetooth device address is available: %d", rc);

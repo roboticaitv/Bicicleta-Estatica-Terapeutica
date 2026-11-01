@@ -1,9 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-/* Includes */
-/* STD APIs */
-
+/* Standard C APIs */
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -13,7 +11,6 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
-#include "ble_config.h"
 
 /* FreeRTOS APIs */
 #include <freertos/FreeRTOS.h>
@@ -27,6 +24,4 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 
-/* Defines */
-#define TAG "BLE_MANAGER"
 #endif // COMMON_H
