@@ -1,6 +1,7 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.extensionActivationMode": "always",
+  "idf.buildPath": "${workspaceFolder}/build/out",
   "cmake.configureOnOpen": false,
   "cmake.configureOnEdit": false,
   "cmake.automaticReconfigure": false,
@@ -22,16 +23,13 @@
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
   ],
-  "idf.port": "/dev/ttyACM0",
-  "idf.currentSetup": "/home/carlos/.espressif/v6.0.2/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },
-  "clangd.path": "/home/carlos/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/home/carlos/Documents/proyectos/bicicleta/build"
+    "--compile-commands-dir=${workspaceFolder}/build/out"
   ],
   "idf.flashType": "UART"
 }

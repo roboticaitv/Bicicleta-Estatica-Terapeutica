@@ -1,0 +1,18 @@
+services:
+  idf:
+    image: espressif/idf:v5.3.2
+    user: "1000:1000"
+    working_dir: /project
+    volumes:
+      - ..:/project
+      - ./.cache/ccache:/tmp/.ccache
+      - ./.cache/component_manager:/tmp/.cache/Espressif/ComponentManager
+    environment:
+      - HOME=/tmp
+      - IDF_TARGET=esp32s3
+      - IDF_CCACHE_ENABLE=1
+      - CCACHE_DIR=/tmp/.ccache
+      - GIT_CONFIG_COUNT=1
+      - GIT_CONFIG_KEY_0=safe.directory
+      - GIT_CONFIG_VALUE_0=*
+    command: idf.py -B build/out build
