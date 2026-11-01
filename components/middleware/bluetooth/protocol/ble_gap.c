@@ -7,11 +7,16 @@
 static uint8_t own_addr_type;
 static const ble_uuid16_t hid_service_uuid = BLE_UUID16_INIT(0x1812);
 static bool s_connected;
+static bool s_advertising;
 
 static void start_advertising(void);
 static int gap_event_handler(struct ble_gap_event *event, void *arg);
 
 static void start_advertising(void) {
+  if (s_connected || s_advertising) {
+    return;
+  }
+
   struct ble_hs_adv_fields adv_fields = {0};
   struct ble_hs_adv_fields rsp_fields = {0};
   struct ble_gap_adv_params adv_params = {0};
@@ -53,6 +58,7 @@ static void start_advertising(void) {
     ESP_LOGE(TAG, "Failed to start advertising: %d", rc);
     return;
   }
+  s_advertising = true;
   ESP_LOGI(TAG, "Advertising HID gamepad as %s", BLE_DEVICE_NAME);
 }
 
@@ -65,6 +71,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
              event->connect.status);
     if (event->connect.status == 0) {
       s_connected = true;
+      s_advertising = false;
       ble_hid_set_connection(event->connect.conn_handle);
       int security_rc = ble_gap_security_initiate(event->connect.conn_handle);
       if (security_rc != 0) {
@@ -84,6 +91,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
       }
     } else {
       s_connected = false;
+      s_advertising = false;
       ble_hid_set_connection(BLE_HS_CONN_HANDLE_NONE);
       start_advertising();
     }
@@ -92,11 +100,13 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
   case BLE_GAP_EVENT_DISCONNECT:
     ESP_LOGI(TAG, "Disconnected; reason=%d", event->disconnect.reason);
     s_connected = false;
+    s_advertising = false;
     ble_hid_set_connection(BLE_HS_CONN_HANDLE_NONE);
     start_advertising();
     return 0;
 
   case BLE_GAP_EVENT_ADV_COMPLETE:
+    s_advertising = false;
     if (event->adv_complete.reason != 0) {
       ESP_LOGI(TAG, "Advertising complete; reason=%d",
                event->adv_complete.reason);
