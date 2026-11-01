@@ -1,0 +1,81 @@
+name: ESP-IDF Firmware CI & Code Quality
+
+on:
+  push:
+    branches: [main, dev, "**"]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build:
+    name: Build Firmware (ESP32-S3)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3.2
+      env:
+        IDF_TARGET: esp32s3
+        IDF_CCACHE_ENABLE: 1
+        CCACHE_DIR: /github/workspace/build/.cache/ccache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mark workspace as safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Cache ccache & ESP-IDF managed components
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/.cache/ccache
+            managed_components
+          key: ${{ runner.os }}-esp-idf-v5.3.2-${{ hashFiles('**/CMakeLists.txt', 'build/sdkconfig.defaults') }}
+          restore-keys: |
+            ${{ runner.os }}-esp-idf-v5.3.2-
+
+      - name: Build ESP32-S3 firmware
+        run: |
+          . /opt/esp/entrypoint.sh
+          rm -f build/sdkconfig sdkconfig
+          idf.py -B build/out build
+          idf.py -B build/out size-components
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: biciver-esp32s3-firmware
+          path: |
+            build/out/*.bin
+            build/out/*.elf
+            build/out/*.map
+            build/out/bootloader/bootloader.bin
+            build/out/partition_table/partition-table.bin
+            build/out/flasher_args.json
+
+  static-analysis:
+    name: Code Quality & Static Bug Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Cppcheck (Static Bug & Quality Analyzer)
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run Cppcheck Analysis
+        run: |
+          echo "Scanning C/C++ source code for bugs, null pointers, and style issues..."
+          cppcheck --enable=warning,style,performance,portability \
+            --suppress=missingIncludeSystem \
+            --inline-suppr \
+            --error-exitcode=0 \
+            --template=gcc \
+            components/ apps/ main/
+
+      - name: SonarCloud Scan (Free for Public Repositories)
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarcloud-github-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

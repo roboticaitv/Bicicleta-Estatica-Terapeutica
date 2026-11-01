@@ -1,2 +1,0 @@
-# Keep BLE bond keys across power cycles for reliable host reconnection.
-CONFIG_BT_NIMBLE_NVS_PERSIST=y

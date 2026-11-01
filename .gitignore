@@ -17,9 +17,12 @@
 # Log files
 *.log
 
-# Build artifacts and directories
-**/build/
-build/
+# Build artifacts and directories (keep CI/Docker config in build/)
+build/*
+build/.*
+!build/Dockerfile
+!build/docker-compose.yml
+!build/sdkconfig.defaults
 *.o
 *.a
 *.out
