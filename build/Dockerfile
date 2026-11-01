@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM espressif/idf:v5.3.2
+FROM espressif/idf:v6.0
 
 ENV IDF_TARGET=esp32s3 \
     IDF_CCACHE_ENABLE=1 \
